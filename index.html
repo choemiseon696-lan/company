@@ -1371,8 +1371,8 @@
   <!--
     운영자 설정 안내
     1) HTML 파일 하나만 업로드해도 화면과 신청폼 테스트가 가능합니다.
-    2) 실제 DB 저장이 필요하면 아래 script 영역의 window.LEAD_ENDPOINT에 Google Apps Script, Make, Zapier, 자체 서버 웹훅 주소를 넣으세요.
-    3) endpoint를 넣지 않으면 방문자 브라우저 localStorage에만 저장됩니다. 이 방식은 운영용 DB가 아니며 테스트용입니다.
+    2) 실제 DB 저장은 아래 script 영역의 window.LEAD_ENDPOINT에 Google Apps Script 웹 앱 URL을 넣으면 됩니다.
+    3) endpoint가 비어 있으면 방문자 브라우저 localStorage에만 저장됩니다. 운영 시에는 Apps Script 웹 앱 URL을 연결하세요.
     4) 관리자 테스트 패널은 주소 뒤에 ?admin=1 을 붙이면 표시됩니다.
   -->
 
@@ -1780,14 +1780,16 @@
 
   <script>
     /* =============================
-      DB 연동 설정
-      - HTML만으로는 서버 DB에 자동 저장할 수 없습니다.
-      - 아래 endpoint에 Google Apps Script / Make / Zapier / 자체 서버 Webhook URL을 넣으면 신청 데이터가 전송됩니다.
-      - 빈 문자열이면 방문자 브라우저 localStorage에만 저장됩니다. 운영용 DB로 사용하지 마세요.
+      Google Apps Script DB 연동 설정
+      1) 구글시트 > 확장 프로그램 > Apps Script에 동봉된 Code.gs를 붙여넣고 웹 앱으로 배포하세요.
+      2) 배포 후 발급되는 /exec 웹 앱 주소를 아래 LEAD_ENDPOINT에 넣으면 신청 데이터가 구글시트로 저장됩니다.
+         예: window.LEAD_ENDPOINT = "https://script.google.com/macros/s/여기에_배포_ID/exec";
+      3) 빈 문자열이면 방문자 브라우저 localStorage에만 저장됩니다. 운영용 DB가 아닙니다.
+      4) Apps Script는 브라우저 CORS 응답 처리가 까다로울 수 있어 no-cors + text/plain 방식으로 전송합니다.
     ============================== */
-    window.LEAD_ENDPOINT = "";
-    window.LEAD_SEND_MODE = "cors"; // Google Apps Script에서 CORS 오류가 나면 "no-cors"로 변경
-    window.LEAD_CONTENT_TYPE = "application/json"; // no-cors 사용 시 "text/plain;charset=utf-8" 권장
+    window.LEAD_ENDPOINT = ""; // 여기에 Apps Script 웹 앱 /exec 주소 입력
+    window.LEAD_SEND_MODE = "no-cors";
+    window.LEAD_CONTENT_TYPE = "text/plain;charset=utf-8";
 
     const $ = (selector) => document.querySelector(selector);
     const form = $('#leadForm');
@@ -1991,7 +1993,12 @@
 
       if (fd.get('website')) return; // honeypot
 
+      const now = new Date();
       const lead = {
+        leadId: 'EX-' + now.getTime().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 7).toUpperCase(),
+        brand: '엑시트컴퍼니',
+        source: '엑시트컴퍼니 무료종목진단 랜딩페이지',
+        service: '무료종목진단 신청',
         name: String(fd.get('name') || '').trim(),
         phone: String(fd.get('phone') || '').trim(),
         amount: String(fd.get('amount') || ''),
@@ -2002,7 +2009,7 @@
         page: location.href,
         referrer: document.referrer,
         userAgent: navigator.userAgent,
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
         ...getUtm()
       };
 
@@ -2026,7 +2033,7 @@
         showToast(
           '무료종목진단 신청이 접수되었습니다.',
           result.localOnly
-            ? '현재는 테스트 모드입니다. 실제 DB 저장은 window.LEAD_ENDPOINT 연결 후 가능합니다.'
+            ? '현재는 테스트 모드입니다. Apps Script 웹 앱 URL을 연결하면 Google Sheets DB로 저장됩니다.'
             : '입력하신 연락처로 순차 안내드리겠습니다.'
         );
       } catch (err) {
@@ -2048,7 +2055,7 @@
         showToast('저장된 테스트 데이터가 없습니다.', '신청폼을 한 번 제출한 뒤 다시 시도해주세요.');
         return;
       }
-      const columns = ['createdAt', 'name', 'phone', 'amount', 'stock', 'category', 'priority', 'utm_source', 'utm_medium', 'utm_campaign', 'page'];
+      const columns = ['createdAt', 'leadId', 'brand', 'service', 'source', 'name', 'phone', 'amount', 'stock', 'category', 'priority', 'utm_source', 'utm_medium', 'utm_campaign', 'page'];
       const csv = [columns.join(',')]
         .concat(leads.map(row => columns.map(col => csvEscape(row[col])).join(',')))
         .join('\n');
